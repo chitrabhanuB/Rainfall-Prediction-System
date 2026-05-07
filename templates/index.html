@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Rainfall Prediction Dashboard</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            background: linear-gradient(to right, #4facfe, #00f2fe);
+            font-family: Arial;
+        }
+
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .header {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .btn-custom {
+            background: #ff7e5f;
+            color: white;
+            border: none;
+        }
+
+        .btn-custom:hover {
+            background: #ff6a4a;
+        }
+
+        .result-box {
+            font-size: 22px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .card {
+            border-radius: 18px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+        }
+
+        input {
+            border-radius: 10px !important;
+        }
+
+        .btn-custom {
+            background: linear-gradient(45deg, #ff7e5f, #feb47b);
+            font-weight: bold;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-custom:hover {
+            transform: scale(1.05);
+        }
+
+        .result-box {
+            font-size: 24px;
+            font-weight: bold;
+            padding: 10px;
+            border-radius: 10px;
+            background: #f1f1f1;
+            transition: all 0.3s ease;
+        }
+
+        .metric-pill {
+            padding: 6px 12px;
+            border-radius: 20px;
+            background: #e3f2fd;
+            display: inline-block;
+            margin-top: 5px;
+        }
+
+        img {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeInUp 1s forwards;
+        }
+
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container mt-5">
+
+        <h1 class="header">🌧 Rainfall Prediction Dashboard</h1>
+        <div class="text-center mb-4">
+            <button id="trainBtn" class="btn btn-lg btn-outline-light">⏱ Retrain Model</button>
+            <span id="trainStatus" class="ms-3 text-white"></span>
+        </div>
+
+        <!-- MODEL RESULTS -->
+        <div class="card p-4 mb-4 bg-white">
+            <h3 class="text-primary">📊 Model Performance</h3>
+            <div id="metricsSummary" class="row text-center mb-3">
+
+                <div class="col-md-2">
+                    <small>Best Model</small>
+                    <div class="metric-pill text-primary" id="model"></div>
+                </div>
+
+                <div class="col-md-2">
+                    <small>R2</small>
+                    <div class="metric-pill text-success" id="r2"></div>
+                </div>
+
+                <div class="col-md-2">
+                    <small>RMSE</small>
+                    <div class="metric-pill text-danger" id="rmse"></div>
+                </div>
+
+                <div class="col-md-2">
+                    <small>MAE</small>
+                    <div class="metric-pill text-warning" id="mae"></div>
+                </div>
+
+                <div class="col-md-4">
+                    <small>Last Updated</small>
+                    <div class="metric-pill text-dark" id="updated"></div>
+                </div>
+
+            </div>
+
+            <hr>
+            <h5>Model Comparison (Test)</h5>
+            <div id="modelComparison" style="overflow:auto; max-height:220px;"></div>
+        </div>
+
+        <!-- GRAPHS -->
+        <div class="card p-4 mb-4 bg-white">
+            <h3 class="text-success">📈 Model Graphs</h3>
+            <div class="mb-3"><img id="g1" src="/static/graph1.png" class="img-fluid rounded shadow-sm"></div>
+            <div class="mb-3"><img id="g2" src="/static/graph2.png" class="img-fluid rounded shadow-sm"></div>
+            <div class="mb-3"><img id="g3" src="/static/graph3.png" class="img-fluid rounded shadow-sm"></div>
+            <h6>PCA Explained Variance (Top 5): <span id="pcaTop5"></span></h6>
+        </div>
+
+        <!-- PREDICTION -->
+        <div class="card p-4 bg-white">
+            <h3 class="text-danger">🤖 Custom Prediction</h3>
+
+            <div class="row">
+                <div class="col-md-3"><input id="RH2M" class="form-control mb-2" placeholder="Humidity"></div>
+                <div class="col-md-3"><input id="GWETTOP" class="form-control mb-2" placeholder="Soil Moisture"></div>
+                <div class="col-md-3"><input id="QV2M" class="form-control mb-2" placeholder="Specific Humidity"></div>
+                <div class="col-md-3"><input id="ALLSKY_SFC_SW_DWN" class="form-control mb-2"
+                        placeholder="Solar Radiation"></div>
+
+                <div class="col-md-3"><input id="T2MDEW" class="form-control mb-2" placeholder="Dew Point"></div>
+                <div class="col-md-3"><input id="T2M_MIN" class="form-control mb-2" placeholder="Min Temp"></div>
+                <div class="col-md-3"><input id="DOY" class="form-control mb-2" placeholder="Day of Year"></div>
+                <div class="col-md-3"><input id="WS2M" class="form-control mb-2" placeholder="Wind Speed"></div>
+            </div>
+
+            <button class="btn btn-custom mt-3" onclick="predict()">Predict Rainfall</button>
+
+            <div class="result-box mt-3" id="result"></div>
+        </div>
+
+    </div>
+
+    <script>
+        async function loadResults() {
+            const res = await fetch("/results");
+            const data = await res.json();
+
+            // New structured results.json
+            document.getElementById("model").innerText = data.best_model || 'N/A';
+            document.getElementById("r2").innerText = (data.metrics_future && data.metrics_future.r2) ?? 'N/A';
+            document.getElementById("rmse").innerText = (data.metrics_future && data.metrics_future.rmse) ?? 'N/A';
+            document.getElementById("mae").innerText = (data.metrics_future && data.metrics_future.mae) ?? 'N/A';
+            document.getElementById("updated").innerText = data.timestamp ? new Date(data.timestamp).toLocaleString() : '';
+
+            // model comparison table
+            const comp = data.model_comparison || {};
+            let html = '<table class="table table-sm"><thead><tr><th>Model</th><th>R2</th><th>RMSE</th><th>MAE</th></tr></thead><tbody>';
+            for (const [name, vals] of Object.entries(comp)) {
+                html += `<tr><td>${name}</td><td>${(vals.test.r2 ?? 'N/A')}</td><td>${(vals.test.rmse ?? 'N/A')}</td><td>${(vals.test.mae ?? 'N/A')}</td></tr>`;
+            }
+            html += '</tbody></table>';
+            document.getElementById('modelComparison').innerHTML = html;
+
+            // PCA
+            document.getElementById('pcaTop5').innerText = (data.pca_top5 || []).map(x => x.toFixed ? x.toFixed(3) : x).join(', ');
+
+            // graphs (cache-bust by timestamp)
+            const ts = Date.now();
+            if (data.graphs && data.graphs.length >= 3) {
+                document.getElementById('g1').src = '/' + data.graphs[0] + '?t=' + ts;
+                document.getElementById('g2').src = '/' + data.graphs[1] + '?t=' + ts;
+                document.getElementById('g3').src = '/' + data.graphs[2] + '?t=' + ts;
+            }
+
+            // future predictions table
+            const fut = data.future_predictions || [];
+            let futHtml = '<h5>Future Predictions</h5><table class="table table-sm"><thead><tr><th>Year</th><th>DOY</th><th>Actual</th><th>Predicted</th></tr></thead><tbody>';
+            for (const r of fut.slice(0, 20)) {
+                futHtml += `<tr><td>${r.year}</td><td>${r.doy}</td><td>${r.actual}</td><td>${r.predicted}</td></tr>`;
+            }
+            futHtml += '</tbody></table>';
+            // append after graphs card
+            const graphsCard = document.querySelectorAll('.card')[1];
+            if (graphsCard) {
+                // ensure only one future predictions card exists; update if present
+                let existing = document.getElementById('futurePredictionsCard');
+                if (existing) {
+                    existing.innerHTML = futHtml;
+                } else {
+                    const div = document.createElement('div');
+                    div.className = 'card p-3 mb-4 bg-white';
+                    div.id = 'futurePredictionsCard';
+                    div.innerHTML = futHtml;
+                    graphsCard.parentNode.insertBefore(div, graphsCard.nextSibling);
+                }
+            }
+        }
+
+        async function predict() {
+            const resultBox = document.getElementById("result");
+
+            resultBox.innerText = "⏳ Predicting...";
+            resultBox.style.background = "#fff3cd";
+
+            const data = {
+                RH2M: parseFloat(RH2M.value),
+                GWETTOP: parseFloat(GWETTOP.value),
+                QV2M: parseFloat(QV2M.value),
+                ALLSKY_SFC_SW_DWN: parseFloat(ALLSKY_SFC_SW_DWN.value),
+                T2MDEW: parseFloat(T2MDEW.value),
+                T2M_MIN: parseFloat(T2M_MIN.value),
+                DOY: parseFloat(DOY.value),
+                WS2M: parseFloat(WS2M.value)
+            };
+
+            const res = await fetch("/predict", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+            });
+
+            const result = await res.json();
+
+            let level = "Low 🌤";
+            let color = "#d4edda";
+
+            if (result.prediction > 10) {
+                level = "Heavy 🌧";
+                color = "#cce5ff";
+            } else if (result.prediction > 3) {
+                level = "Moderate 🌦";
+                color = "#fff3cd";
+            }
+
+            resultBox.innerText =
+                `🌧 ${result.prediction} mm (${level})`;
+
+            resultBox.style.background = color;
+        }
+
+        loadResults();
+
+        // Train button
+        document.getElementById('trainBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('trainBtn');
+            const status = document.getElementById('trainStatus');
+            btn.disabled = true;
+            status.innerText = 'Starting training...';
+
+            const res = await fetch('/train', { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'started') {
+                status.innerText = 'Training started (background).';
+                btn.disabled = true;
+                // Start polling status
+                pollTrainStatus();
+            } else {
+                status.innerText = data.message || 'Failed to start training';
+                btn.disabled = false;
+            }
+        });
+
+        let pollInterval = null;
+        async function pollTrainStatus() {
+            const statusEl = document.getElementById('trainStatus');
+
+            if (pollInterval) clearInterval(pollInterval);
+
+            async function check() {
+                const res = await fetch('/train_status');
+                const data = await res.json();
+                statusEl.innerText = data.running ? 'Training running...' : 'Training idle.';
+
+                if (!data.running) {
+                    // training finished, stop polling and refresh results
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                    document.getElementById('trainBtn').disabled = false;
+                    await loadResults();
+                    statusEl.innerText = 'Training completed.';
+                }
+            }
+
+            // initial immediate check
+            await check();
+            pollInterval = setInterval(check, 3000);
+        }
+
+        // On page load, check if training is running and populate log
+        window.addEventListener('load', async () => {
+            const res = await fetch('/train_status');
+            const data = await res.json();
+            if (data.running) {
+                document.getElementById('trainBtn').disabled = true;
+                document.getElementById('trainStatus').innerText = 'Training running...';
+                pollTrainStatus();
+            }
+        });
+    </script>
+
+</body>
+
+</html>

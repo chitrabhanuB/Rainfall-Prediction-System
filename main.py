@@ -7,6 +7,9 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+import json
+import os
+
 
 from io import StringIO
 
@@ -198,14 +201,33 @@ print(pca.explained_variance_ratio_[:5])
 
 # ==============================
 # FUTURE PREDICTION
-# ==============================
+# Option: sample random years from 2021-2025 for the future predictions
+FUTURE_YEARS = list(range(2021, 2026))
+# set SAMPLE_YEARS to an integer N to randomly sample N distinct years from FUTURE_YEARS
+# set SAMPLE_YEARS = None to keep the original behaviour (all years >= 2021)
+SAMPLE_YEARS = 3
+
+# seed for reproducibility
+np.random.seed(42)
+
+if SAMPLE_YEARS is None:
+    selected_future_df = future_df.copy()
+    sampled_years = sorted(selected_future_df['YEAR'].unique().tolist())
+else:
+    # sample N distinct years from the FUTURE_YEARS pool
+    sampled_years = list(np.random.choice(FUTURE_YEARS, size=min(SAMPLE_YEARS, len(FUTURE_YEARS)), replace=False))
+    selected_future_df = future_df[future_df['YEAR'].isin(sampled_years)].copy()
+
+X_future = selected_future_df.drop(['PRECTOTCORR', 'DATE'], axis=1)
+y_future = selected_future_df['PRECTOTCORR']
+
 future_pred = np.maximum(best_model.predict(X_future), 0)
 
-results_future = future_df[['YEAR', 'DOY']].copy()
+results_future = selected_future_df[['YEAR', 'DOY']].copy()
 results_future['Actual'] = y_future.values
 results_future['Predicted'] = future_pred
 
-print("\n📅 FUTURE PREDICTIONS")
+print("\n📅 FUTURE PREDICTIONS (sampled years)")
 print(results_future.head())
 
 # FUTURE METRICS
@@ -214,7 +236,7 @@ rmse_f = np.sqrt(mean_squared_error(y_future, future_pred))
 mae_f = mean_absolute_error(y_future, future_pred)
 mse_f = mean_squared_error(y_future, future_pred)
 
-print("\n📊 FUTURE DATA PERFORMANCE (2021–2025)")
+print("\n📊 FUTURE DATA PERFORMANCE (sampled years)")
 print("R2 Score :", r2_f)
 print("RMSE     :", rmse_f)
 print("MAE      :", mae_f)
@@ -229,7 +251,8 @@ plt.plot(best_pred[:100], label="Predicted")
 plt.title("Actual vs Predicted Rainfall")
 plt.legend()
 plt.grid(True)
-plt.show()
+plt.savefig("static/graph1.png")
+plt.close()
 
 plt.figure(figsize=(12,5))
 plt.plot(test_df['DATE'].values[:200], y_test.values[:200], label="Actual")
@@ -238,7 +261,8 @@ plt.title("Time Series Rainfall Prediction")
 plt.legend()
 plt.grid(True)
 plt.xticks(rotation=45)
-plt.show()
+plt.savefig("static/graph2.png")
+plt.close()
 
 residuals = y_test.values - best_pred
 
@@ -247,7 +271,8 @@ plt.scatter(best_pred, residuals, alpha=0.6)
 plt.axhline(y=0, linestyle='--')
 plt.title("Residual Plot")
 plt.grid(True)
-plt.show()
+plt.savefig("static/graph3.png")
+plt.close()
 
 # ==============================
 # SAVE MODEL
@@ -256,3 +281,81 @@ with open("rainfall_model.pkl", "wb") as f:
     pickle.dump(best_model, f)
 
 print("\n✅ MODEL SAVED")
+
+
+summary = {
+    "best_model": best_name,
+    "r2_score": r2_f,
+    "rmse": rmse_f,
+    "mae": mae_f
+}
+
+os.makedirs("static", exist_ok=True)
+
+with open("static/results.json", "w") as f:
+    json.dump(summary, f)
+
+# -----------------------
+# Write a richer results.json for the dashboard
+# -----------------------
+from datetime import datetime
+
+# helper to convert numpy types
+def _num(x):
+    try:
+        return float(x)
+    except Exception:
+        return None
+
+# model comparison: collect metrics for each model
+model_comparison = {}
+for name in models:
+    train_metrics = evaluate(y_train, results[name]["train"])
+    test_metrics = evaluate(y_test, results[name]["test"])
+    model_comparison[name] = {
+        "train": {
+            "r2": _num(train_metrics[0]),
+            "rmse": _num(train_metrics[1]),
+            "mae": _num(train_metrics[2]),
+            "mse": _num(train_metrics[3])
+        },
+        "test": {
+            "r2": _num(test_metrics[0]),
+            "rmse": _num(test_metrics[1]),
+            "mae": _num(test_metrics[2]),
+            "mse": _num(test_metrics[3])
+        }
+    }
+
+# PCA top5
+pca_top5 = [ _num(x) for x in pca.explained_variance_ratio_[:5].tolist() ]
+
+# future predictions (convert DataFrame to list of small dicts)
+future_list = []
+for _, row in results_future.iterrows():
+    future_list.append({
+        "year": int(row['YEAR']),
+        "doy": int(row['DOY']),
+        "actual": _num(row['Actual']),
+        "predicted": _num(row['Predicted'])
+    })
+
+results_payload = {
+    "timestamp": datetime.utcnow().isoformat() + 'Z',
+    "best_model": best_name,
+    "metrics_future": {
+        "r2": _num(r2_f),
+        "rmse": _num(rmse_f),
+        "mae": _num(mae_f),
+        "mse": _num(mse_f)
+    },
+    "model_comparison": model_comparison,
+    "pca_top5": pca_top5,
+    "future_predictions": future_list,
+    "graphs": ["static/graph1.png", "static/graph2.png", "static/graph3.png"]
+}
+
+results_payload['sampled_years'] = sampled_years
+
+with open("static/results.json", "w") as f:
+    json.dump(results_payload, f, indent=2)
